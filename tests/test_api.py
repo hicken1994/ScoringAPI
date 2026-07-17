@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app import ml
@@ -105,3 +106,109 @@ def test_rate_limit():
             "barrio": "retiro",
         }, headers=headers)
         assert resp.status_code == 200
+
+
+# ── ML endpoints ──
+
+
+def _generate_training_data(n: int = 50) -> list[dict]:
+    """Generate synthetic training data for tests."""
+    import random
+
+    records = []
+    for _ in range(n):
+        descuento = random.uniform(0, 40)
+        precio = random.uniform(0, 25)
+        liquidez = random.choice([5, 10, 15])
+        tamano = random.choice([5, 10])
+        precio_total = random.uniform(100000, 500000)
+        metros = random.uniform(40, 150)
+        precio_m2 = precio_total / metros
+        rent = random.uniform(-10, 30)
+
+        # Synthesize decision from score
+        score = descuento * 1.2 + precio * 1.2 + liquidez + tamano
+        if score > 55 and rent > 5:
+            decision = "COMPRAR"
+        elif score > 35:
+            decision = "NEGOCIAR"
+        else:
+            decision = "DESCARTAR"
+
+        records.append({
+            "score_descuento": descuento,
+            "score_precio": precio,
+            "score_liquidez": liquidez,
+            "score_tamano": tamano,
+            "precio_total": precio_total,
+            "metros": metros,
+            "precio_m2": round(precio_m2, 2),
+            "rentabilidad_estimada": rent,
+            "decision": decision,
+        })
+    return records
+
+
+def test_train_model():
+    data = _generate_training_data(50)
+    resp = client.post("/model/train", json={"records": data})
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["accuracy"] > 0
+    assert result["n_samples"] == 50
+    assert len(result["feature_importance"]) == 8
+
+
+def test_train_insufficient_data():
+    data = _generate_training_data(5)
+    resp = client.post("/model/train", json={"records": data})
+    assert resp.status_code == 422
+
+
+def test_train_missing_decision():
+    data = _generate_training_data(20)
+    for r in data:
+        del r["decision"]
+    resp = client.post("/model/train", json={"records": data})
+    assert resp.status_code == 422
+
+
+def test_predict_after_train():
+    # Train first
+    data = _generate_training_data(50)
+    client.post("/model/train", json={"records": data})
+
+    # Predict
+    resp = client.post("/model/predict", json={
+        "score_descuento": 30,
+        "score_precio": 20,
+        "score_liquidez": 15,
+        "score_tamano": 10,
+        "precio_total": 180000,
+        "metros": 75,
+        "precio_m2": 2400,
+        "rentabilidad_estimada": 25,
+    })
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["prediction"] in ("COMPRAR", "NEGOCIAR", "DESCARTAR")
+    assert 0 <= result["confidence"] <= 1
+    assert sum(result["probabilities"].values()) == pytest.approx(1.0)
+
+
+def test_predict_before_train():
+    """Predict should fail if no model is loaded."""
+    from app import ml
+    ml._model = None  # Force unload
+
+    resp = client.post("/model/predict", json={
+        "score_descuento": 30,
+        "score_precio": 20,
+        "score_liquidez": 15,
+        "score_tamano": 10,
+        "precio_total": 180000,
+        "metros": 75,
+        "precio_m2": 2400,
+        "rentabilidad_estimada": 25,
+    })
+    assert resp.status_code == 409
