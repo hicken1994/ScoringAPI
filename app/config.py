@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # ML model
     model_path: str = "model/classifier.pkl"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "protected_namespaces": ("settings_",)}
 
 
 settings = Settings()

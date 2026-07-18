@@ -1,6 +1,7 @@
 """Scoring API — FastAPI application entry point."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,10 +16,20 @@ from app.routers import health, model, scoring
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize services on boot, cleanup on shutdown."""
+    cache.init_redis()
+    ml.load_model()
+    yield
+
+
 app = FastAPI(
     title=settings.app_name,
     description="Investment property scoring API — rule-based + ML predictions",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -32,13 +43,6 @@ app.add_middleware(
 app.include_router(scoring.router)
 app.include_router(model.router)
 app.include_router(health.router)
-
-
-@app.on_event("startup")
-def startup():
-    """Initialize services on boot."""
-    cache.init_redis()
-    ml.load_model()
 
 
 @app.post("/token", response_model=TokenResponse, tags=["auth"])

@@ -34,7 +34,7 @@ def compute_score(
     else:
         diferencia_pct = 0
 
-    score_descuento = min(diferencia_pct * 2, 40)
+    score_descuento = max(0, min(diferencia_pct * 2, 40))
 
     if precio_m2_barrio > 0:
         ratio = precio_m2 / precio_m2_barrio
