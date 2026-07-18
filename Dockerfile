@@ -13,7 +13,7 @@ WORKDIR /app
 
 COPY --from=builder /install /usr/local
 COPY app/ ./app/
-COPY model/ ./model/
+RUN mkdir -p model
 
 EXPOSE 8000
 
